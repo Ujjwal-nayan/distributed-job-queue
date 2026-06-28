@@ -1,6 +1,20 @@
+```markdown
 # Distributed Job Queue
 
+![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.138+-teal?logo=fastapi)
+![Redis](https://img.shields.io/badge/Redis-Streams-red?logo=redis)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue?logo=postgresql)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)
+![Status](https://img.shields.io/badge/Chaos_Tested-zero_data_loss-brightgreen)
+
 A production-grade distributed job queue built from scratch in Python. No Celery, no BullMQ — just Redis Streams, PostgreSQL, and raw engineering.
+
+---
+
+## Dashboard
+
+![Dashboard](dashboard.png)
 
 ---
 
@@ -12,31 +26,7 @@ Most developers reach for Celery without understanding what happens underneath. 
 
 ## Architecture
 
-```
-Producer (FastAPI)
-      │
-      ├── 1. Persists job to PostgreSQL (source of truth)
-      ├── 2. Sets idempotency key in Redis (after successful DB insert)
-      └── 3. Dispatches job_id to Redis Stream
-                    │
-              Consumer Group
-                    │
-             Worker (asyncio)
-                    │
-          ┌─────────┴──────────┐
-      Success             Failure / Timeout
-          │                    │
-     completed          Exponential Backoff (2s, 4s, 8s...)
-                              │
-                        Max retries hit?
-                         ┌────┴────┐
-                        No       Yes
-                         │         │
-                       Retry      DLQ
-                               (failed)
-
-Reaper (background) — detects stuck jobs via worker heartbeats and re-queues them
-```
+![Architecture](architecture.png)
 
 ---
 
@@ -53,6 +43,7 @@ Reaper (background) — detects stuck jobs via worker heartbeats and re-queues t
 - **Worker ID tracking** — each job records which worker claimed it
 - **Reaper process** — cross-references worker heartbeats before re-queuing stuck jobs
 - **Health endpoint** — `/health` verifies PostgreSQL and Redis connectivity
+- **Streamlit dashboard** — real-time queue monitoring with DLQ retry controls
 - **Chaos tested** — Redis and worker killed mid-execution, zero data loss confirmed
 
 ---
@@ -63,6 +54,7 @@ Reaper (background) — detects stuck jobs via worker heartbeats and re-queues t
 - Redis Streams + Consumer Groups
 - PostgreSQL + Alembic migrations
 - Docker + Docker Compose
+- Streamlit (dashboard)
 
 ---
 
@@ -93,11 +85,12 @@ pip install -r requirements.txt
 alembic upgrade head
 ```
 
-**5. Start all three processes (separate terminals, venv activated in each)**
+**5. Start all processes (separate terminals, venv activated in each)**
 ```bash
-uvicorn main:app --reload
-python3 worker.py
-python3 reaper.py
+uvicorn main:app --reload     # API server
+python3 worker.py              # Job worker
+python3 reaper.py              # Stuck job recovery
+streamlit run dashboard.py     # Monitoring dashboard
 ```
 
 **Optional env vars:**
@@ -170,6 +163,9 @@ Job 2 final status: completed
 ├── reaper.py            # Stuck job recovery
 ├── database.py          # DB and Redis connections
 ├── models.py            # Job model
+├── dashboard.py         # Streamlit monitoring dashboard
+├── dashboard.png        # Dashboard screenshot
+├── architecture.png     # Architecture diagram
 ├── chaos_test.sh        # Chaos engineering test
 ├── migrations/          # Alembic migrations
 ├── docker-compose.yml   # Redis + PostgreSQL
