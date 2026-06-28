@@ -1,12 +1,12 @@
 ```markdown
 # Distributed Job Queue
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.138+-teal?logo=fastapi)
-![Redis](https://img.shields.io/badge/Redis-Streams-red?logo=redis)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue?logo=postgresql)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)
-![Status](https://img.shields.io/badge/Chaos_Tested-zero_data_loss-brightgreen)
+![Python](https://img.shields.io/badge/python-3.10+-blue)
+![FastAPI](https://img.shields.io/badge/fastapi-0.138-teal)
+![Redis](https://img.shields.io/badge/redis-streams-red)
+![PostgreSQL](https://img.shields.io/badge/postgresql-16-blue)
+![Docker](https://img.shields.io/badge/docker-compose-blue)
+![Status](https://img.shields.io/badge/chaos_tested-passing-green)
 
 A production-grade distributed job queue built from scratch in Python. No Celery, no BullMQ — just Redis Streams, PostgreSQL, and raw engineering.
 
