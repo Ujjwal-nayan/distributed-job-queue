@@ -1,26 +1,29 @@
-import time
+import asyncio
 import json
 from database import get_connection, get_redis
 
 STREAM_NAME = "jobs_stream"
 CONSUMER_GROUP = "workers"
 CONSUMER_NAME = "worker-1"
+JOB_TIMEOUT_SECONDS = 10
 
 def setup_consumer_group(r):
     try:
         r.xgroup_create(STREAM_NAME, CONSUMER_GROUP, id="0", mkstream=True)
     except Exception:
-        pass  # Group already exists
+        pass
 
-def process_job(job):
+async def process_job(job):
     payload = json.loads(job["payload"])
     print(f"[Worker] Processing job {job['id']} → {payload}")
-    time.sleep(2)
+    await asyncio.sleep(2)
     if payload.get("force_fail"):
         raise Exception("Simulated failure")
+    if payload.get("force_timeout"):
+        await asyncio.sleep(999)
     print(f"[Worker] Completed job {job['id']}")
 
-def handle_job(job_id, r):
+async def handle_job(job_id, r):
     conn = get_connection()
     cur = conn.cursor()
 
@@ -39,12 +42,37 @@ def handle_job(job_id, r):
     conn.commit()
 
     try:
-        process_job(job)
+        async with asyncio.timeout(JOB_TIMEOUT_SECONDS):
+            await process_job(job)
+
         cur.execute("""
             UPDATE jobs SET status = 'completed', updated_at = now()
             WHERE id = %s
         """, (job["id"],))
         conn.commit()
+
+    except TimeoutError:
+        print(f"[Worker] Job {job['id']} timed out after {JOB_TIMEOUT_SECONDS}s")
+        retry_count = job["retry_count"] + 1
+        max_retries = job["max_retries"]
+
+        if retry_count < max_retries:
+            cur.execute("""
+                UPDATE jobs
+                SET status = 'pending', retry_count = %s,
+                    error_message = 'Job timed out', updated_at = now()
+                WHERE id = %s
+            """, (retry_count, job["id"]))
+            conn.commit()
+            r.xadd(STREAM_NAME, {"job_id": job["id"]})
+        else:
+            cur.execute("""
+                UPDATE jobs
+                SET status = 'failed', retry_count = %s,
+                    error_message = 'Job timed out — max retries exhausted', updated_at = now()
+                WHERE id = %s
+            """, (retry_count, job["id"]))
+            conn.commit()
 
     except Exception as e:
         retry_count = job["retry_count"] + 1
@@ -60,8 +88,7 @@ def handle_job(job_id, r):
                 WHERE id = %s
             """, (retry_count, str(e), job["id"]))
             conn.commit()
-            time.sleep(backoff)
-            # Re-dispatch to Redis Stream
+            await asyncio.sleep(backoff)
             r.xadd(STREAM_NAME, {"job_id": job["id"]})
         else:
             print(f"[Worker] Job {job['id']} exhausted retries. Moving to DLQ.")
@@ -76,7 +103,7 @@ def handle_job(job_id, r):
     cur.close()
     conn.close()
 
-def run():
+async def run():
     r = get_redis()
     setup_consumer_group(r)
     print("[Worker] Listening on Redis Stream...")
@@ -91,14 +118,15 @@ def run():
         )
 
         if not messages:
+            await asyncio.sleep(0.1)
             continue
 
         for stream, entries in messages:
             for message_id, data in entries:
                 job_id = data["job_id"]
                 print(f"[Worker] Received job_id: {job_id}")
-                handle_job(job_id, r)
+                await handle_job(job_id, r)
                 r.xack(STREAM_NAME, CONSUMER_GROUP, message_id)
 
 if __name__ == "__main__":
-    run()
+    asyncio.run(run())
