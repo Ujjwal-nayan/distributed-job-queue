@@ -1,173 +1,191 @@
-```markdown
-# Distributed Job Queue
+<div align="center">
 
-![Python](https://img.shields.io/badge/python-3.10+-blue)
-![FastAPI](https://img.shields.io/badge/fastapi-0.138-teal)
-![Redis](https://img.shields.io/badge/redis-streams-red)
-![PostgreSQL](https://img.shields.io/badge/postgresql-16-blue)
-![Docker](https://img.shields.io/badge/docker-compose-blue)
-![Status](https://img.shields.io/badge/chaos_tested-passing-green)
+# 🚀 Distributed Job Queue
 
-A production-grade distributed job queue built from scratch in Python. No Celery, no BullMQ — just Redis Streams, PostgreSQL, and raw engineering.
+*A production-grade distributed job queue built from scratch using FastAPI, Redis Streams, PostgreSQL, and asyncio.*
+
+<p>
+  <img src="https://skillicons.dev/icons?i=python,fastapi,postgres,redis,docker" />
+</p>
+
+<p>
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge">
+  <img src="https://img.shields.io/badge/FastAPI-0.138-009688?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Chaos-Tested-success?style=for-the-badge">
+</p>
+
+</div>
 
 ---
 
-## Dashboard
+## ✨ Overview
+
+Most developers use Celery without understanding what happens underneath.
+
+This project rebuilds a production-ready distributed job queue from first principles using **Redis Streams**, **PostgreSQL**, and **asyncio**, implementing features like reliable delivery, retries, worker heartbeats, dead-letter queues, and stuck job recovery.
+
+---
+
+## ⚡ Highlights
+
+- 🚫 No Celery or BullMQ
+- 📬 Redis Streams + Consumer Groups
+- 🗄 PostgreSQL as the source of truth
+- 🔒 Atomic job claiming
+- ♻️ Exponential backoff retries
+- 💀 Dead Letter Queue
+- ❤️ Worker heartbeat monitoring
+- 🔄 Automatic stuck-job recovery
+- 🧠 Idempotency keys
+- 📊 Streamlit monitoring dashboard
+- 🧪 Chaos tested
+
+---
+
+## 📊 Dashboard
+
+Real-time monitoring of:
+
+- Queue statistics
+- Active workers
+- Job status
+- Retry counts
+- Dead Letter Queue
+
+<p align="center">
 
 ![Dashboard](dashboard.png)
 
----
-
-## Why This Exists
-
-Most developers reach for Celery without understanding what happens underneath. This project builds a job queue from first principles — the same way companies like Razorpay, Swiggy, and Zepto do it internally.
+</p>
 
 ---
 
-## Architecture
+## 🏗️ Architecture
+
+The API persists every job to PostgreSQL before dispatching only the `job_id` through Redis Streams. Workers consume jobs using Consumer Groups, update execution status, while a background Reaper recovers abandoned jobs.
+
+<p align="center">
 
 ![Architecture](architecture.png)
 
----
-
-## Features
-
-- **Redis Streams + Consumer Groups** — reliable job dispatch, no polling
-- **PostgreSQL persistence** — every job stored with full audit trail
-- **Atomic job claiming** — `UPDATE ... WHERE status = 'pending'` prevents duplicate processing
-- **Exponential backoff** — failed jobs retry after 2s, 4s, 8s
-- **Dead Letter Queue** — jobs that exhaust retries are marked failed with error message preserved
-- **Idempotency keys** — same job submitted twice? Second request rejected with 409
-- **asyncio timeout** — jobs that hang are cancelled after 10s and retried
-- **Worker heartbeats** — workers register liveness every 5s in PostgreSQL
-- **Worker ID tracking** — each job records which worker claimed it
-- **Reaper process** — cross-references worker heartbeats before re-queuing stuck jobs
-- **Health endpoint** — `/health` verifies PostgreSQL and Redis connectivity
-- **Streamlit dashboard** — real-time queue monitoring with DLQ retry controls
-- **Chaos tested** — Redis and worker killed mid-execution, zero data loss confirmed
+</p>
 
 ---
 
-## Tech Stack
+## ✨ Features
 
-- Python 3.10+, FastAPI, asyncio
 - Redis Streams + Consumer Groups
-- PostgreSQL + Alembic migrations
-- Docker + Docker Compose
-- Streamlit (dashboard)
+- PostgreSQL persistence
+- Atomic job claiming
+- Exponential backoff (2s → 4s → 8s)
+- Dead Letter Queue
+- Idempotency keys
+- Worker heartbeats
+- Worker ID tracking
+- Reaper process
+- `/health` endpoint
+- Streamlit dashboard
+- Chaos engineering tests
 
 ---
 
-## Getting Started
+## 🛠 Tech Stack
 
-**Prerequisites:** Docker, Python 3.10+
+| Category | Technology |
+|-----------|------------|
+| Language | Python 3.10+ |
+| API | FastAPI |
+| Concurrency | asyncio |
+| Queue | Redis Streams |
+| Database | PostgreSQL |
+| Migrations | Alembic |
+| Dashboard | Streamlit |
+| Containers | Docker Compose |
 
-**1. Clone the repo**
+---
+
+## 🚀 Quick Start
+
 ```bash
 git clone https://github.com/Ujjwal-nayan/distributed-job-queue.git
 cd distributed-job-queue
-```
 
-**2. Start Redis and PostgreSQL**
-```bash
 docker compose up -d
-```
 
-**3. Set up Python environment**
-```bash
 python3 -m venv venv
 source venv/bin/activate
+
 pip install -r requirements.txt
-```
 
-**4. Run database migrations**
-```bash
 alembic upgrade head
-```
+````
 
-**5. Start all processes (separate terminals, venv activated in each)**
-```bash
-uvicorn main:app --reload     # API server
-python3 worker.py              # Job worker
-python3 reaper.py              # Stuck job recovery
-streamlit run dashboard.py     # Monitoring dashboard
-```
-
-**Optional env vars:**
-- `WORKER_NAME` — unique name per worker instance (default: `worker-1`)
-- `STUCK_JOB_THRESHOLD` — seconds before reaper considers a job stuck (default: `30`)
-
----
-
-## API
-
-**Health check**
-```bash
-curl http://localhost:8000/health
-```
-
-**Create a job**
-```bash
-curl -X POST http://localhost:8000/jobs \
-  -H "Content-Type: application/json" \
-  -d '{"payload": {"task": "review_pr", "repo": "my-repo"}}'
-```
-
-**Create a job with idempotency key**
-```bash
-curl -X POST http://localhost:8000/jobs \
-  -H "Content-Type: application/json" \
-  -d '{"payload": {"task": "review_pr"}, "idempotency_key": "pr-42-review"}'
-```
-
-**Check job status**
-```bash
-curl http://localhost:8000/jobs/{job_id}
-```
-
-**Job status values:** `pending` → `running` → `completed` / `failed`
-
----
-
-## Chaos Engineering
-
-Simulates Redis failure and worker crash mid-execution to prove zero data loss:
+Run each service in a separate terminal.
 
 ```bash
-./chaos_test.sh
+uvicorn main:app --reload
 ```
 
-Expected output:
+```bash
+python worker.py
 ```
-Job 1 final status: completed
-Job 2 final status: completed
+
+```bash
+python reaper.py
+```
+
+```bash
+streamlit run dashboard.py
 ```
 
 ---
 
-## Design Decisions
+## 📡 API
 
-- **Postgres is the source of truth** — jobs persisted to PostgreSQL before Redis dispatch. Redis goes down, no data lost.
-- **Atomic claiming** — `UPDATE ... WHERE status = 'pending'` with `rowcount` check prevents race conditions.
-- **Reaper checks heartbeats** — only re-queues jobs whose workers have stale heartbeats. Active long-running jobs left alone.
-- **ACK even on skip** — Redis messages acknowledged even for skipped jobs, preventing infinite redelivery.
-- **Idempotency at two layers** — Redis `SET NX` for fast detection, PostgreSQL `UNIQUE` constraint as final guard.
+### Create Job
+
+```http
+POST /jobs
+```
+
+### Get Job
+
+```http
+GET /jobs/{job_id}
+```
+
+### Health Check
+
+```http
+GET /health
+```
 
 ---
 
-## Project Structure
+## 📂 Project Structure
 
+```text
+.
+├── main.py
+├── worker.py
+├── reaper.py
+├── dashboard.py
+├── database.py
+├── models.py
+├── migrations/
+├── dashboard.png
+├── architecture.png
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
 ```
-├── main.py              # FastAPI server
-├── worker.py            # Async worker
-├── reaper.py            # Stuck job recovery
-├── database.py          # DB and Redis connections
-├── models.py            # Job model
-├── dashboard.py         # Streamlit monitoring dashboard
-├── dashboard.png        # Dashboard screenshot
-├── architecture.png     # Architecture diagram
-├── chaos_test.sh        # Chaos engineering test
-├── migrations/          # Alembic migrations
-├── docker-compose.yml   # Redis + PostgreSQL
-└── requirements.txt
-```
+
+---
+
+<div align="center">
+
+**Built to understand distributed systems by building one from scratch.**
+
+⭐ If you found this project useful, consider starring the repository.
+
+</div>
