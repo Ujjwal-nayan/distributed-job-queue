@@ -6,12 +6,29 @@ STREAM_NAME = "jobs_stream"
 CONSUMER_GROUP = "workers"
 CONSUMER_NAME = "worker-1"
 JOB_TIMEOUT_SECONDS = 10
+HEARTBEAT_INTERVAL = 5
 
 def setup_consumer_group(r):
     try:
         r.xgroup_create(STREAM_NAME, CONSUMER_GROUP, id="0", mkstream=True)
     except Exception:
         pass
+
+async def send_heartbeat():
+    while True:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO worker_heartbeats (worker_id, last_seen, status)
+            VALUES (%s, now(), 'alive')
+            ON CONFLICT (worker_id)
+            DO UPDATE SET last_seen = now(), status = 'alive'
+        """, (CONSUMER_NAME,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"[Heartbeat] {CONSUMER_NAME} alive")
+        await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 async def process_job(job):
     payload = json.loads(job["payload"])
@@ -107,6 +124,8 @@ async def run():
     r = get_redis()
     setup_consumer_group(r)
     print("[Worker] Listening on Redis Stream...")
+
+    asyncio.create_task(send_heartbeat())
 
     while True:
         messages = r.xreadgroup(
