@@ -47,11 +47,11 @@ Reaper (background) — detects stuck jobs via worker heartbeats and re-queues t
 - **Atomic job claiming** — `UPDATE ... WHERE status = 'pending'` prevents duplicate processing
 - **Exponential backoff** — failed jobs retry after 2s, 4s, 8s
 - **Dead Letter Queue** — jobs that exhaust retries are marked failed with error message preserved
-- **Idempotency keys** — same job submitted twice? Second request rejected with 409 (Redis + DB unique constraint)
+- **Idempotency keys** — same job submitted twice? Second request rejected with 409
 - **asyncio timeout** — jobs that hang are cancelled after 10s and retried
 - **Worker heartbeats** — workers register liveness every 5s in PostgreSQL
-- **Worker ID tracking** — each job records which worker claimed it, enabling reaper-worker coordination
-- **Reaper process** — detects stuck jobs by cross-referencing worker heartbeats, re-queues only genuinely orphaned jobs
+- **Worker ID tracking** — each job records which worker claimed it
+- **Reaper process** — cross-references worker heartbeats before re-queuing stuck jobs
 - **Health endpoint** — `/health` verifies PostgreSQL and Redis connectivity
 - **Chaos tested** — Redis and worker killed mid-execution, zero data loss confirmed
 
@@ -63,7 +63,6 @@ Reaper (background) — detects stuck jobs via worker heartbeats and re-queues t
 - Redis Streams + Consumer Groups
 - PostgreSQL + Alembic migrations
 - Docker + Docker Compose
-- Structured logging (stdlib `logging`)
 
 ---
 
@@ -155,34 +154,24 @@ Job 2 final status: completed
 
 ## Design Decisions
 
-- **Postgres is the source of truth** — jobs are persisted to PostgreSQL before dispatch to Redis. If Redis goes down, no data is lost.
-- **Atomic claiming** — workers use `UPDATE ... WHERE status = 'pending'` and check `rowcount` to prevent race conditions.
-- **Reaper checks heartbeats** — before re-queuing a stuck job, the reaper verifies the worker's heartbeat is stale. Active workers with long-running jobs are left alone.
-- **ACK even on skip** — Redis messages are acknowledged even if the worker skips a job (already claimed or not found), preventing infinite redelivery.
-- **Idempotency at two layers** — Redis `SET NX` for fast duplicate detection, PostgreSQL `UNIQUE` constraint on `idempotency_key` as the final guard.
+- **Postgres is the source of truth** — jobs persisted to PostgreSQL before Redis dispatch. Redis goes down, no data lost.
+- **Atomic claiming** — `UPDATE ... WHERE status = 'pending'` with `rowcount` check prevents race conditions.
+- **Reaper checks heartbeats** — only re-queues jobs whose workers have stale heartbeats. Active long-running jobs left alone.
+- **ACK even on skip** — Redis messages acknowledged even for skipped jobs, preventing infinite redelivery.
+- **Idempotency at two layers** — Redis `SET NX` for fast detection, PostgreSQL `UNIQUE` constraint as final guard.
 
 ---
 
 ## Project Structure
 
 ```
-├── main.py              # FastAPI server (job creation, status, health)
-├── worker.py            # Async worker with atomic claim, timeout, retries, heartbeats
-├── reaper.py            # Stuck job recovery with worker heartbeat cross-referencing
-├── database.py          # PostgreSQL and Redis connection helpers
-├── models.py            # Job model with idempotency_key and worker_id support
-├── chaos_test.sh        # Chaos engineering test (Redis + worker failure)
-├── migrations/          # Alembic migration files
-├── docker-compose.yml   # Redis + PostgreSQL containers
-└── requirements.txt     # Python dependencies
+├── main.py              # FastAPI server
+├── worker.py            # Async worker
+├── reaper.py            # Stuck job recovery
+├── database.py          # DB and Redis connections
+├── models.py            # Job model
+├── chaos_test.sh        # Chaos engineering test
+├── migrations/          # Alembic migrations
+├── docker-compose.yml   # Redis + PostgreSQL
+└── requirements.txt
 ```
-
----
-
-## Interview Talking Points
-
-- **At-least-once delivery:** Reaper detects stuck jobs via heartbeat gaps and re-queues them.
-- **Idempotency:** Two-layer guard (Redis + DB unique constraint) ensures duplicate submissions are rejected with 409.
-- **Fault tolerance:** Chaos test proves zero data loss when Redis or workers crash mid-job.
-- **Why Redis Streams over BRPOP:** Consumer groups enable multiple workers to share load without polling; pending entries list provides visibility into unacknowledged messages.
-- **Why Postgres as source of truth:** Jobs survive Redis restarts; full audit trail for every state transition.
