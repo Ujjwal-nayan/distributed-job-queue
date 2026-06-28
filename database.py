@@ -2,6 +2,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import os
+import redis
 
 load_dotenv()
 
@@ -15,11 +16,9 @@ def get_connection():
         cursor_factory=RealDictCursor
     )
 
-import redis
-
 def get_redis():
     return redis.Redis(
-        host="localhost",
-        port=6379,
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", 6379)),
         decode_responses=True
     )

@@ -5,7 +5,7 @@ def generate_id():
     return str(uuid.uuid4())
 
 class Job:
-    def __init__(self, payload, max_retries=3):
+    def __init__(self, payload, max_retries=3, idempotency_key=None):
         self.id = generate_id()
         self.status = "pending"
         self.payload = payload
@@ -14,6 +14,8 @@ class Job:
         self.created_at = datetime.now()
         self.updated_at = datetime.now()
         self.error_message = None
+        self.worker_id = None
+        self.idempotency_key = idempotency_key
 
     def to_dict(self):
         return {
@@ -24,5 +26,7 @@ class Job:
             "max_retries": self.max_retries,
             "created_at": str(self.created_at),
             "updated_at": str(self.updated_at),
-            "error_message": self.error_message
+            "error_message": self.error_message,
+            "worker_id": self.worker_id,
+            "idempotency_key": self.idempotency_key
         }
