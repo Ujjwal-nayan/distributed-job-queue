@@ -9,15 +9,24 @@ app = FastAPI()
 class JobRequest(BaseModel):
     payload: dict
     max_retries: int = 3
+    idempotency_key: str = None
 
 @app.post("/jobs", status_code=201)
 def create_job(request: JobRequest):
+    r = get_redis()
+
+    if request.idempotency_key:
+        redis_key = f"idempotency:{request.idempotency_key}"
+        is_new = r.setnx(redis_key, "1")
+        if not is_new:
+            raise HTTPException(status_code=409, detail="Duplicate request — job already submitted")
+        r.expire(redis_key, 86400)
+
     job = Job(
         payload=json.dumps(request.payload),
         max_retries=request.max_retries
     )
 
-    # Persist job to PostgreSQL
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
@@ -29,8 +38,6 @@ def create_job(request: JobRequest):
     cur.close()
     conn.close()
 
-    # Dispatch job_id to Redis Stream
-    r = get_redis()
     r.xadd("jobs_stream", {"job_id": job.id})
 
     return job.to_dict()
